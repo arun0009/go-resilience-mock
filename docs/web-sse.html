@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Tester - Go Resilience Mock</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+        }
+
+        input,
+        button {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #30363d;
+            background: #161b22;
+            color: #fff;
+        }
+
+        button {
+            cursor: pointer;
+            background: #238636;
+            border-color: rgba(27, 31, 35, 0.15);
+        }
+
+        button:hover {
+            background: #2ea043;
+        }
+
+        #log {
+            margin-top: 20px;
+            border: 1px solid #30363d;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background: #000;
+            font-family: monospace;
+        }
+
+        .event {
+            color: #7ee787;
+        }
+
+        .error {
+            color: #f85149;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>SSE Tester</h1>
+    <div>
+        <input type="text" id="url" value="http://localhost:8080/sse" style="width: 300px;">
+        <button onclick="connect()">Start Listening</button>
+        <button onclick="disconnect()" style="background: #da3633;">Stop</button>
+    </div>
+    <div id="log"></div>
+
+    <script>
+        let evtSource;
+        const logDiv = document.getElementById('log');
+
+        function log(msg, type) {
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            div.className = type;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connect() {
+            if (evtSource) evtSource.close();
+            const url = document.getElementById('url').value;
+            try {
+                evtSource = new EventSource(url);
+                evtSource.onopen = () => log('Connection opened to ' + url, 'event');
+                evtSource.onerror = (e) => log('Error/Closed', 'error');
+                evtSource.onmessage = (e) => log('Event: ' + e.data, 'event');
+            } catch (e) {
+                log('Connection failed: ' + e.message, 'error');
+            }
+        }
+
+        function disconnect() {
+            if (evtSource) {
+                evtSource.close();
+                log('Stopped listening', 'error');
+            }
+        }
+    </script>
+</body>
+
+</html>

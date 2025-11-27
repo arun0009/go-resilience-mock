@@ -1,0 +1,14 @@
+- path: /api/inventory/item
+  method: GET
+  responses:
+    # 1. Intermittent Failure: 25% chance of returning a 500 error
+    - status: 500
+      probability: 0.25 # This fault fires 25% of the time
+      delay: 50ms
+      body: '{"error": "random failure injected"}'
+      
+    # 2. Sequential/Default Success: If the 500 did not fire, this is the default success path.
+    #    When the sequence resets, it starts again at the 500.
+    - status: 200
+      delay: 0s
+      body: '{"id": "{{.Request.Query.id}}", "ts": "{{.Server.Timestamp}}", "status": "ok"}' # Dynamic Body

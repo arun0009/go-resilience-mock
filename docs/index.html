@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Resilience Mock - Documentation</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --sidebar-bg: #161b22;
+            --text-color: #c9d1d9;
+            --link-color: #58a6ff;
+            --border-color: #30363d;
+            --header-bg: #161b22;
+            --accent-color: #238636;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            backdrop-filter: blur(10px);
+            /* Subtle glass effect if we had transparency */
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-header img {
+            width: 36px;
+            height: 36px;
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 0;
+            color: #fff;
+            letter-spacing: -0.02em;
+        }
+
+        .nav-links {
+            list-style: none;
+            padding: 16px 0;
+            margin: 0;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .nav-links li a {
+            display: block;
+            padding: 10px 24px;
+            color: var(--text-color);
+            text-decoration: none;
+            border-left: 3px solid transparent;
+            transition: all 0.2s ease;
+            font-size: 0.95rem;
+        }
+
+        .nav-links li a:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+            color: #fff;
+        }
+
+        .nav-links li a.active {
+            background-color: rgba(88, 166, 255, 0.1);
+            color: #fff;
+            border-left-color: var(--link-color);
+            font-weight: 500;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 48px 64px;
+            max-width: 900px;
+            margin: 0 auto;
+            scroll-behavior: smooth;
+        }
+
+        /* Markdown Styles */
+        .markdown-body {
+            line-height: 1.7;
+            font-size: 16px;
+        }
+
+        .markdown-body h1 {
+            font-size: 2.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.3em;
+            margin-bottom: 1em;
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+
+        .markdown-body h2 {
+            font-size: 1.75rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.3em;
+            margin-top: 1.5em;
+            margin-bottom: 1em;
+            color: #fff;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .markdown-body h3 {
+            font-size: 1.25rem;
+            margin-top: 1.5em;
+            margin-bottom: 1em;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .markdown-body a {
+            color: var(--link-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .markdown-body a:hover {
+            text-decoration: underline;
+        }
+
+        .markdown-body code {
+            background-color: rgba(110, 118, 129, 0.2);
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+            font-size: 85%;
+        }
+
+        .markdown-body pre {
+            background-color: #161b22;
+            padding: 20px;
+            border-radius: 8px;
+            overflow: auto;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1.5em;
+        }
+
+        .markdown-body pre code {
+            background-color: transparent;
+            padding: 0;
+            font-size: 100%;
+        }
+
+        .markdown-body blockquote {
+            border-left: 4px solid var(--link-color);
+            padding: 16px;
+            color: #8b949e;
+            background-color: rgba(88, 166, 255, 0.05);
+            border-radius: 0 6px 6px 0;
+            margin: 1.5em 0;
+        }
+
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1.5em;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .markdown-body th {
+            background-color: #21262d;
+            font-weight: 600;
+            text-align: left;
+        }
+
+        .markdown-body th,
+        .markdown-body td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .markdown-body tr:last-child td {
+            border-bottom: none;
+        }
+
+        .markdown-body tr:nth-child(2n) {
+            background-color: #161b22;
+        }
+
+        .markdown-body img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .nav-links {
+                display: flex;
+                overflow-x: auto;
+                padding: 10px;
+            }
+
+            .nav-links li a {
+                white-space: nowrap;
+                border-left: none;
+                border-bottom: 3px solid transparent;
+                padding: 8px 16px;
+            }
+
+            .nav-links li a:hover,
+            .nav-links li a.active {
+                border-left-color: transparent;
+                border-bottom-color: var(--link-color);
+                background-color: transparent;
+            }
+
+            .main-content {
+                padding: 24px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <img src="go-resilience-mock.png" alt="Logo">
+            <h1>Resilience Mock</h1>
+        </div>
+        <ul class="nav-links">
+            <li><a href="#" onclick="loadDoc('quickstart.md', this)">Quickstart</a></li>
+            <li><a href="#" onclick="loadDoc('configuration.md', this)">Configuration</a></li>
+            <li><a href="#" onclick="loadDoc('scenarios.md', this)">Scenarios</a></li>
+            <li><a href="#" onclick="loadDoc('streaming.md', this)">Streaming</a></li>
+            <li><a href="#" onclick="loadDoc('chaos_engineering.md', this)">Chaos Engineering</a></li>
+            <li><a href="#" onclick="loadDoc('observability.md', this)">Observability</a></li>
+            <li><a href="#" onclick="loadDoc('api_reference.md', this)">API Reference</a></li>
+            <li><a href="#" onclick="loadDoc('deployment.md', this)">Deployment</a></li>
+        </ul>
+        <div id="interactive-tools-section">
+            <div class="sidebar-header" style="border-top: 1px solid var(--border-color);">
+                <h1>Interactive Tools</h1>
+            </div>
+            <ul class="nav-links">
+                <li><a href="/web-ws" target="_blank">WebSocket Tester ↗</a></li>
+                <li><a href="/web-sse" target="_blank">SSE Tester ↗</a></li>
+                <li><a href="/info" target="_blank">Server Info ↗</a></li>
+            </ul>
+        </div>
+        <div
+            style="padding: 20px; font-size: 0.8rem; color: #8b949e; border-top: 1px solid var(--border-color); margin-top: auto;">
+            Go Resilience Mock • <a href="https://opensource.org/licenses/MIT"
+                style="color: #8b949e; text-decoration: none;">MIT License</a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div id="content" class="markdown-body">
+            <!-- Content will be loaded here -->
+        </div>
+    </main>
+
+    <script>
+        async function loadDoc(filename, element) {
+            // Update active state
+            document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            try {
+                const response = await fetch(filename);
+                if (!response.ok) throw new Error('Failed to load document');
+                const text = await response.text();
+
+                // Render Markdown
+                document.getElementById('content').innerHTML = marked.parse(text);
+
+                // Highlight code blocks
+                hljs.highlightAll();
+
+                // Fix image paths (relative to docs root)
+                document.querySelectorAll('#content img').forEach(img => {
+                    const src = img.getAttribute('src');
+                    if (!src.startsWith('http') && !src.startsWith('/')) {
+                        // Already relative, should be fine as we are in /docs/
+                    }
+                });
+
+            } catch (error) {
+                document.getElementById('content').innerHTML = `<h1>Error</h1><p>${error.message}</p>`;
+            }
+        }
+
+        // Load Quickstart by default
+        document.addEventListener('DOMContentLoaded', () => {
+            const firstLink = document.querySelector('.nav-links a');
+            loadDoc('quickstart.md', firstLink);
+
+            // Hide Interactive Tools on GitHub Pages (static hosting)
+            if (window.location.hostname.includes('github.io')) {
+                const toolsSection = document.getElementById('interactive-tools-section');
+                if (toolsSection) {
+                    toolsSection.style.display = 'none';
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,14 @@
+services:
+  go-resilience-mock:
+    build: .
+    image: arun0009/go-resilience-mock:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - LOG_REQUESTS=true
+      - LOG_HEADERS=false
+      - LOG_BODY=true
+      - ENABLE_CORS=true
+    volumes:
+      - ./scenarios.yaml:/scenarios.yaml

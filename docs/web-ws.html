@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Tester - Go Resilience Mock</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+        }
+
+        input,
+        button {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #30363d;
+            background: #161b22;
+            color: #fff;
+        }
+
+        button {
+            cursor: pointer;
+            background: #238636;
+            border-color: rgba(27, 31, 35, 0.15);
+        }
+
+        button:hover {
+            background: #2ea043;
+        }
+
+        #log {
+            margin-top: 20px;
+            border: 1px solid #30363d;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background: #000;
+            font-family: monospace;
+        }
+
+        .sent {
+            color: #58a6ff;
+        }
+
+        .received {
+            color: #7ee787;
+        }
+
+        .error {
+            color: #f85149;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>WebSocket Tester</h1>
+    <div>
+        <input type="text" id="url" value="ws://localhost:8080/ws" style="width: 300px;">
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()" style="background: #da3633;">Disconnect</button>
+    </div>
+    <div style="margin-top: 10px;">
+        <input type="text" id="msg" placeholder="Message to send..." style="width: 300px;">
+        <button onclick="send()">Send</button>
+    </div>
+    <div id="log"></div>
+
+    <script>
+        let ws;
+        const logDiv = document.getElementById('log');
+
+        function log(msg, type) {
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            div.className = type;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connect() {
+            if (ws) ws.close();
+            const url = document.getElementById('url').value;
+            try {
+                ws = new WebSocket(url);
+                ws.onopen = () => log('Connected to ' + url, 'sent');
+                ws.onclose = () => log('Disconnected', 'error');
+                ws.onerror = (e) => log('Error: ' + e, 'error');
+                ws.onmessage = (e) => log('< ' + e.data, 'received');
+            } catch (e) {
+                log('Connection failed: ' + e.message, 'error');
+            }
+        }
+
+        function disconnect() {
+            if (ws) ws.close();
+        }
+
+        function send() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected', 'error');
+                return;
+            }
+            const msg = document.getElementById('msg').value;
+            ws.send(msg);
+            log('> ' + msg, 'sent');
+            document.getElementById('msg').value = '';
+        }
+    </script>
+</body>
+
+</html>
