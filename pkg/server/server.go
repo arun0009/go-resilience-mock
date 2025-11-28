@@ -18,6 +18,7 @@ import (
 
 	"github.com/arun0009/go-resilience-mock/pkg/config"
 	"github.com/arun0009/go-resilience-mock/pkg/faults"
+	"github.com/arun0009/go-resilience-mock/pkg/health"
 	"github.com/arun0009/go-resilience-mock/pkg/observability"
 	"github.com/gorilla/mux"
 
@@ -180,6 +181,13 @@ func NewRouter(cfg config.Config) *mux.Router {
 		router.Use(rateLimitMiddleware)
 	}
 
+	// Health Check
+	h := health.NewHealth()
+	h.AddCheck("ping", func() (string, error) {
+		return "pong", nil
+	})
+	router.HandleFunc("/health", h.Handler().ServeHTTP).Methods("GET")
+
 	// Stress
 	router.HandleFunc("/api/stress/cpu/{duration}", faults.HandleCPUStress).Methods("GET")
 	router.HandleFunc("/api/stress/mem/{size}", faults.HandleMemoryStress).Methods("GET")
@@ -220,7 +228,6 @@ func NewRouter(cfg config.Config) *mux.Router {
 	router.HandleFunc("/web-sse", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "docs/web-sse.html")
 	})
-	router.HandleFunc("/info", handleInfo).Methods("GET")
 
 	// Documentation
 	// Serve the docs directory at /docs/
@@ -292,27 +299,6 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 	defer historyMutex.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(history)
-}
-
-func handleInfo(w http.ResponseWriter, r *http.Request) {
-	cfg := config.GetConfig()
-	history, historyMutex := config.GetRequestHistory()
-	historyMutex.Lock()
-	historyCount := len(history)
-	historyMutex.Unlock()
-
-	info := map[string]interface{}{
-		"hostname":       cfg.Hostname,
-		"port":           cfg.Port,
-		"tls_enabled":    cfg.EnableTLS,
-		"cors_enabled":   cfg.EnableCORS,
-		"history_count":  historyCount,
-		"total_requests": atomic.LoadUint64(&config.RequestCounter),
-		"uptime":         "Not tracked (stateless)", // Could add start time if needed
-		"version":        "1.0.0",
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(info)
 }
 
 func handleDump(w http.ResponseWriter, r *http.Request) {

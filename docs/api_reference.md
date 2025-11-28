@@ -15,6 +15,12 @@
 | `/echo` | `ANY` | Echoes the request back as JSON. Useful for debugging client requests. |
 | `/history` | `GET` | Returns a JSON array of the last `HISTORY_SIZE` requests. |
 | `/dump` | `GET` | Returns 200 OK. Simple health check or dump endpoint. |
+
+## Observability
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/health` | `GET` | Health check endpoint with uptime tracking, system info (goroutines, OS, arch), and extensible health checks. |
 | `/metrics` | `GET` | Prometheus metrics endpoint. |
 
 ## Stress Testing (Chaos)

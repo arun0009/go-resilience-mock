@@ -1,36 +1,8 @@
 package faults
 
 import (
-	"net/http"
-	"net/url"
 	"testing"
 )
-
-func TestExecuteTemplate(t *testing.T) {
-	data := TemplateData{
-		Request: struct {
-			Method  string
-			Path    string
-			Query   url.Values
-			Headers http.Header
-			Body    string
-		}{
-			Method: "GET",
-			Path:   "/test",
-			Query:  url.Values{"name": []string{"World"}},
-		},
-	}
-
-	tmpl := "Hello, {{.Request.Query.Get \"name\"}}!"
-	result, err := executeTemplate(tmpl, data)
-	if err != nil {
-		t.Fatalf("executeTemplate failed: %v", err)
-	}
-
-	if result != "Hello, World!" {
-		t.Errorf("Expected 'Hello, World!', got '%s'", result)
-	}
-}
 
 func TestParseMemorySize(t *testing.T) {
 	tests := []struct {

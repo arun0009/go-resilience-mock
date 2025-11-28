@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	mrand "math/rand"
@@ -27,24 +26,8 @@ import (
 
 // --- Request and Scenario Handling ---
 
-// TemplateData provides contextual data to the response body template.
-type TemplateData struct {
-	Request struct {
-		Method  string
-		Path    string
-		Query   url.Values
-		Headers http.Header
-		Body    string
-	}
-	Server struct {
-		Hostname  string
-		Timestamp time.Time
-		FaultType string
-	}
-}
-
 func HandleScenario(w http.ResponseWriter, r *http.Request) {
-	cfg := config.GetConfig()
+
 	scenariosMap := config.GetScenarios()
 
 	// We must look up the scenario using the registered template path, not the raw request path.
@@ -138,44 +121,10 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- 3. Dynamic Response Templating ---
-	// Prepare data for the template
-	templateData := TemplateData{
-		Request: struct {
-			Method  string
-			Path    string
-			Query   url.Values
-			Headers http.Header
-			Body    string
-		}{
-			Method:  r.Method,
-			Path:    r.URL.Path,
-			Query:   r.URL.Query(),
-			Headers: r.Header,
-			Body:    "",
-		},
-		Server: struct {
-			Hostname  string
-			Timestamp time.Time
-			FaultType string
-		}{
-			Hostname:  cfg.Hostname,
-			Timestamp: time.Now(),
-			FaultType: func() string {
-				if response.Delay > 0 {
-					return "delay"
-				}
-				if response.Status >= 400 {
-					return "error"
-				}
-				return "none"
-			}(),
-		},
-	}
-
 	var finalBody string
 	if strings.Contains(response.Body, "{{") {
 		var err error
-		finalBody, err = executeTemplate(response.Body, templateData)
+		finalBody, err = executeTemplate(response.Body, r)
 		if err != nil {
 			log.Printf("Error executing template for %s: %v", r.URL.Path, err)
 			http.Error(w, "Internal Server Error (Template)", http.StatusInternalServerError)
@@ -485,18 +434,4 @@ func HandleSSE(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-}
-
-// executeTemplate runs the response body string through the Go template engine.
-func executeTemplate(tmplStr string, data TemplateData) (string, error) {
-	tmpl, err := template.New("response").Parse(tmplStr)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse template: %w", err)
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("failed to execute template: %w", err)
-	}
-	return buf.String(), nil
 }
