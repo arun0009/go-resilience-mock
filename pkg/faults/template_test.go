@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestExecuteTemplate(t *testing.T) {
@@ -121,12 +123,11 @@ func TestExecuteTemplate(t *testing.T) {
 			}
 
 			got, err := executeTemplate(tt.body, req)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("executeTemplate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && got != tt.expected {
-				t.Errorf("executeTemplate() = %v, want %v", got, tt.expected)
+			if tt.wantErr {
+				assert.Error(t, err, "executeTemplate() error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				assert.NoError(t, err, "executeTemplate() unexpected error")
+				assert.Equal(t, tt.expected, got, "executeTemplate() result mismatch")
 			}
 		})
 	}

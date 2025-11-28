@@ -28,7 +28,7 @@ func matchesRequest(s *config.Scenario, r *http.Request) bool {
 	}
 
 	// 3. Body (Regex) - Only if body matching is configured
-	if s.Matches.Body != "" {
+	if len(s.Matches.Body) > 0 {
 		if r.Body == nil {
 			return false
 		}
@@ -39,19 +39,22 @@ func matchesRequest(s *config.Scenario, r *http.Request) bool {
 		}
 		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-		// TODO: Compile regex once during config load for performance
-		// For now, simple string contains or regex
-		// If it starts with regex:, treat as regex
-		if strings.HasPrefix(s.Matches.Body, "regex:") {
-			pattern := strings.TrimPrefix(s.Matches.Body, "regex:")
+		// Convert the expected body to string for comparison
+		expectedBody := string(s.Matches.Body)
+
+		// Remove surrounding quotes if present (from JSON)
+		expectedBody = strings.Trim(expectedBody, `"`)
+
+		// Check if the expected body is a regex pattern (starts and ends with /)
+		if len(expectedBody) > 2 && expectedBody[0] == '/' && expectedBody[len(expectedBody)-1] == '/' {
+			pattern := expectedBody[1 : len(expectedBody)-1]
 			matched, _ := regexp.MatchString(pattern, string(bodyBytes))
 			if !matched {
 				return false
 			}
 		} else {
-			// Exact match or contains? Let's do exact match for simplicity, or contains?
-			// Let's do contains for flexibility
-			if !strings.Contains(string(bodyBytes), s.Matches.Body) {
+			// For exact match, check if the expected body is contained in the request body
+			if !strings.Contains(string(bodyBytes), expectedBody) {
 				return false
 			}
 		}

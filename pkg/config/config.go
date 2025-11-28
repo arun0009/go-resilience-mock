@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/json"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"sync"
@@ -48,11 +50,50 @@ type CircuitBreakerState struct {
 	Mutex          sync.Mutex
 }
 
+// JSONBody is a helper type to handle both string and structured JSON in YAML
+type JSONBody json.RawMessage
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface
+func (j *JSONBody) UnmarshalYAML(value *yaml.Node) error {
+	var obj interface{}
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+
+	// If it's a string, it might be a raw JSON string or just a plain string
+	if str, ok := obj.(string); ok {
+		*j = JSONBody(str)
+		return nil
+	}
+
+	// If it's structured data (map/slice), marshal it to JSON
+	bytes, err := json.Marshal(obj)
+	if err != nil {
+		return err
+	}
+	*j = JSONBody(bytes)
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (j JSONBody) MarshalJSON() ([]byte, error) {
+	if len(j) == 0 {
+		return []byte("null"), nil
+	}
+	return json.RawMessage(j).MarshalJSON()
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (j *JSONBody) UnmarshalJSON(data []byte) error {
+	*j = JSONBody(data)
+	return nil
+}
+
 // MatchConfig defines rules for matching a request to a scenario
 type MatchConfig struct {
 	Headers map[string]string `yaml:"headers"`
 	Query   map[string]string `yaml:"query"`
-	Body    string            `yaml:"body"` // Regex pattern
+	Body    JSONBody          `yaml:"body"`
 }
 
 // Scenario defines a sequence of custom responses for a specific path
@@ -71,7 +112,7 @@ type Response struct {
 	Status      int               `yaml:"status"`
 	Delay       time.Duration     `yaml:"delay"`
 	DelayRange  string            `yaml:"delayRange"` // e.g., "100ms-500ms"
-	Body        string            `yaml:"body"`
+	Body        JSONBody          `yaml:"body"`
 	Headers     map[string]string `yaml:"headers"`
 	Gzip        bool              `yaml:"gzip"`
 	Probability float64           `yaml:"probability"`
@@ -84,7 +125,8 @@ type RequestRecord struct {
 	Method      string
 	Path        string
 	Query       string
-	Headers     map[string][]string
+	StatusCode  int // Response status code
+	Headers     http.Header
 	BodySnippet string
 	RemoteAddr  string
 }
@@ -144,7 +186,7 @@ func LoadConfig(scenarioFile string) (Config, error) {
 			loadedScenarios[i].CBState = &CircuitBreakerState{
 				State: "closed",
 			}
-			AddScenario(&loadedScenarios[i])
+			addScenarioLocked(&loadedScenarios[i])
 		}
 		currentConfig.Scenarios = loadedScenarios
 	}
@@ -221,6 +263,13 @@ func LoadConfig(scenarioFile string) (Config, error) {
 
 // AddScenario adds or updates a scenario in the thread-safe map
 func AddScenario(s *Scenario) {
+	configLock.Lock()
+	defer configLock.Unlock()
+	addScenarioLocked(s)
+}
+
+// addScenarioLocked adds a scenario without locking (caller must hold configLock)
+func addScenarioLocked(s *Scenario) {
 	if s.CBState == nil {
 		s.CBState = &CircuitBreakerState{State: "closed"}
 	}
@@ -228,9 +277,13 @@ func AddScenario(s *Scenario) {
 
 	// Load existing list or create new
 	if v, ok := scenarios.Load(key); ok {
-		list := v.([]*Scenario)
-		list = append(list, s)
-		scenarios.Store(key, list)
+		oldList := v.([]*Scenario)
+		// Copy-On-Write: Create a new slice to avoid race conditions with readers
+		// who might be iterating over the old slice.
+		newList := make([]*Scenario, len(oldList)+1)
+		copy(newList, oldList)
+		newList[len(oldList)] = s
+		scenarios.Store(key, newList)
 	} else {
 		scenarios.Store(key, []*Scenario{s})
 	}
@@ -246,9 +299,22 @@ func GetRateLimiter() *rate.Limiter {
 	return rateLimiter
 }
 
-// GetRequestHistory returns the recorded request history
-func GetRequestHistory() ([]RequestRecord, *sync.Mutex) {
-	return RequestHistory, &HistoryMutex
+// GetRequestHistory returns the history mutex.
+// Callers must Lock the mutex before accessing RequestHistory directly.
+func GetHistoryMutex() *sync.Mutex {
+	return &HistoryMutex
+}
+
+// ResetDefaults resets the configuration to defaults (useful for testing)
+func ResetDefaults() {
+	configLock.Lock()
+	currentConfig = DefaultConfig
+	rateLimiter = nil
+	configLock.Unlock()
+
+	HistoryMutex.Lock()
+	RequestHistory = []RequestRecord{}
+	HistoryMutex.Unlock()
 }
 
 // GetRegistry returns the global Prometheus registry

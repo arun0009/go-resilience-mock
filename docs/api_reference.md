@@ -12,9 +12,8 @@
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
-| `/echo` | `ANY` | Echoes the request back as JSON. Useful for debugging client requests. |
+| `/echo` | `ANY` | Echoes the request body. Useful for testing request/response handling. |
 | `/history` | `GET` | Returns a JSON array of the last `HISTORY_SIZE` requests. |
-| `/dump` | `GET` | Returns 200 OK. Simple health check or dump endpoint. |
 
 ## Observability
 

@@ -26,10 +26,10 @@
 
 ## Key Features
 
-*   **Circuit Breaker Simulation**: **[NEW]** Simulate stateful circuit breakers (Closed -> Open -> Half-Open) with configurable failure thresholds and timeouts.
-*   **Advanced Matching Rules**: **[NEW]** Trigger scenarios based on specific Headers, Query Parameters, or Body patterns (Regex).
-*   **Health Check Endpoint**: **[NEW]** Standard `/health` endpoint with uptime tracking, system info, and extensible health checks.
-*   **CI/CD Ready**: **[NEW]** Includes a GitHub Action (`uses: arun0009/go-resilience-mock@main`) for easy integration into your pipelines.
+*   **Circuit Breaker Simulation**: Simulate stateful circuit breakers (Closed -> Open -> Half-Open) with configurable failure thresholds and timeouts.
+*   **Advanced Matching Rules**: Trigger scenarios based on specific Headers, Query Parameters, or Body patterns (Regex).
+*   **Health Check Endpoint**: Standard `/health` endpoint with uptime tracking, system info, and extensible health checks.
+*   **CI/CD Ready**: Includes a GitHub Action (`uses: arun0009/go-resilience-mock@main`) for easy integration into your pipelines.
 *   **Scenario-Based Fault Injection**: Define custom sequences of HTTP responses (e.g., `200 -> 500 -> 200`) using a simple `scenarios.yaml` file.
 *   **Interactive Web UI**: Built-in **WebSocket** and **SSE** tester pages served directly from the binary. No external tools needed.
 *   **Advanced Client-Side Control**: Inject jitter (`100ms-500ms`), custom headers, or random body sizes purely via request headers (`X-Echo-*`).
@@ -118,3 +118,24 @@ Use `scenarios.yaml` to define multi-step response sequences for specific paths 
       delay: 50ms 
       body: '{"status": "success"}'
 ```
+
+## Performance Testing with k6
+
+This project includes a comprehensive **k6** load testing script to verify performance and resilience patterns under load.
+
+### Prerequisites
+- [Install k6](https://k6.io/docs/get-started/installation/)
+
+### Running the Load Test
+The script `test/loadtest/k6.js` is self-contained and covers:
+- **Functional Tests**: Health, Echo, History, Matching Rules, Dynamic Paths.
+- **Resiliency Tests**: Jitter, Chaos, Circuit Breaker.
+- **Stress Tests**: CPU and Memory stress.
+
+```bash
+k6 run test/loadtest/k6.js
+```
+
+This will simulate a load of 20 concurrent users and verify that:
+- Failure rate is < 10% (excluding expected chaos).
+- 95th percentile latency is < 1s.

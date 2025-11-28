@@ -2,6 +2,8 @@ package faults
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseMemorySize(t *testing.T) {
@@ -20,16 +22,10 @@ func TestParseMemorySize(t *testing.T) {
 	for _, tt := range tests {
 		val, err := parseMemorySize(tt.input)
 		if tt.hasError {
-			if err == nil {
-				t.Errorf("Expected error for input %s, got nil", tt.input)
-			}
+			assert.Error(t, err, "Expected error for input %s", tt.input)
 		} else {
-			if err != nil {
-				t.Errorf("Unexpected error for input %s: %v", tt.input, err)
-			}
-			if val != tt.expected {
-				t.Errorf("Expected %d for input %s, got %d", tt.expected, tt.input, val)
-			}
+			assert.NoError(t, err, "Unexpected error for input %s", tt.input)
+			assert.Equal(t, tt.expected, val, "Expected %d for input %s", tt.expected, tt.input)
 		}
 	}
 }

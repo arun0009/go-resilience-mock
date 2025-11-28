@@ -10,17 +10,20 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 // TemplateData provides contextual data to the response body template.
 type TemplateData struct {
 	Request struct {
-		ID      string
-		Method  string
-		Path    string
-		Query   map[string]string
-		Headers map[string]string
-		Body    interface{} // Parsed JSON or raw string
+		ID       string
+		Method   string
+		Path     string
+		Query    map[string]string
+		Headers  map[string]string
+		PathVars map[string]string
+		Body     interface{} // Parsed JSON or raw string
 	}
 	Server struct {
 		Hostname  string
@@ -33,9 +36,14 @@ func executeTemplate(body string, r *http.Request) (string, error) {
 	// 1. Prepare Data
 	data := TemplateData{}
 
-	// Request ID from context
-	if reqID := r.Context().Value("requestID"); reqID != nil {
-		data.Request.ID = fmt.Sprintf("%d", reqID.(uint64))
+	// Request ID from context (using the same contextKey type as server)
+	const requestIDKey contextKey = "requestID"
+	if reqID := r.Context().Value(requestIDKey); reqID != nil {
+		if val, ok := reqID.(string); ok {
+			data.Request.ID = val
+		} else if val, ok := reqID.(uint64); ok {
+			data.Request.ID = fmt.Sprintf("%d", val)
+		}
 	}
 
 	data.Request.Method = r.Method
@@ -56,6 +64,9 @@ func executeTemplate(body string, r *http.Request) (string, error) {
 			data.Request.Headers[k] = v[0]
 		}
 	}
+
+	// Path Variables
+	data.Request.PathVars = mux.Vars(r)
 
 	// Request Body
 	if r.Body != nil {

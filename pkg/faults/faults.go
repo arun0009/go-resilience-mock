@@ -9,7 +9,6 @@ import (
 	"log"
 	mrand "math/rand"
 	"net/http"
-	"net/url"
 	"runtime"
 	"strconv"
 	"strings"
@@ -26,6 +25,10 @@ import (
 
 // --- Request and Scenario Handling ---
 
+type contextKey string
+
+const MatchedTemplateKey contextKey = "matchedTemplate"
+
 func HandleScenario(w http.ResponseWriter, r *http.Request) {
 
 	scenariosMap := config.GetScenarios()
@@ -39,6 +42,12 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := pathTemplate + "_" + r.Method
+
+	// Check if we have a forced template match from the catch-all handler
+	if tmpl := r.Context().Value(MatchedTemplateKey); tmpl != nil {
+		key = tmpl.(string) + "_" + r.Method
+	}
+
 	v, ok := scenariosMap.Load(key)
 	if !ok {
 		// Safe fallback if lookup fails
@@ -81,14 +90,12 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 
 	// --- 0. Probability Check ---
 	// If Probability is set (e.g. 0.25), we only trigger the fault 25% of the time.
-	// Otherwise we skip to a default "success" behavior (Echo).
+	// If probability check fails, skip this response and try the next one.
 	if response.Probability > 0.0 && response.Probability < 1.0 {
 		if mrand.Float64() > response.Probability {
-			// Probability check failed; DO NOT inject fault.
-			// Fallback to Echo to simulate a "success" pass-through.
-			HandleEcho(w, r)
-			// Treat as success for CB
-			updateCircuitBreaker(scenario, true)
+			// Probability check failed; skip to next response
+			// Recursively call HandleScenario to try the next response in sequence
+			HandleScenario(w, r)
 			return
 		}
 	}
@@ -137,15 +144,18 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- 3. Dynamic Response Templating ---
-	var finalBody string
-	if strings.Contains(response.Body, "{{") {
+	var finalBody []byte
+	bodyStr := string(response.Body)
+	if strings.Contains(bodyStr, "{{") {
 		var err error
-		finalBody, err = executeTemplate(response.Body, r)
+		var result string
+		result, err = executeTemplate(bodyStr, r)
 		if err != nil {
 			log.Printf("Error executing template for %s: %v", r.URL.Path, err)
 			http.Error(w, "Internal Server Error (Template)", http.StatusInternalServerError)
 			return
 		}
+		finalBody = []byte(result)
 	} else {
 		finalBody = response.Body
 	}
@@ -359,39 +369,33 @@ func HandleEcho(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Default Echo Behavior (JSON Dump)
+	// Default Echo Behavior
+
+	// 1. Echo Headers
+	// Copy all request headers to response, excluding hop-by-hop
+	for k, vv := range r.Header {
+		// Skip standard hop-by-hop headers and our control headers
+		if strings.HasPrefix(k, "X-Echo-") {
+			continue
+		}
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+
+	// 2. Echo Body (Exact Copy)
 	var bodyBuf bytes.Buffer
 	if r.Body != nil {
 		_, _ = io.Copy(&bodyBuf, r.Body)
-		// Restore body for other readers if needed
-		r.Body = io.NopCloser(bytes.NewBuffer(bodyBuf.Bytes()))
 	}
 
-	response := struct {
-		Timestamp  time.Time   `json:"timestamp"`
-		Method     string      `json:"method"`
-		Path       string      `json:"path"`
-		Query      url.Values  `json:"query"`
-		Headers    http.Header `json:"headers"`
-		Body       string      `json:"body"`
-		RemoteAddr string      `json:"remoteAddr"`
-		Hostname   string      `json:"hostname"`
-	}{
-		Timestamp:  time.Now(),
-		Method:     r.Method,
-		Path:       r.URL.Path,
-		Query:      r.URL.Query(),
-		Headers:    r.Header,
-		Body:       bodyBuf.String(),
-		RemoteAddr: r.RemoteAddr,
-		Hostname:   config.GetConfig().Hostname,
+	// Set Content-Type if present
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Error encoding echo response: %v", err)
-	}
+	_, _ = w.Write(bodyBuf.Bytes())
 }
 
 // handleWebsocket upgrades the connection and echoes messages.
