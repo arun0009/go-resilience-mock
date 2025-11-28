@@ -1,0 +1,42 @@
+- path: /api/resiliency/delay-fixed
+  method: GET
+  responses:
+    - status: 200
+      delay: 100ms
+      body: '{"type": "fixed-delay"}'
+
+- path: /api/resiliency/delay-jitter
+  method: GET
+  responses:
+    - status: 200
+      delayRange: "50ms-150ms"
+      body: '{"type": "jitter-delay"}'
+
+- path: /api/resiliency/chaos
+  method: GET
+  responses:
+    - status: 500
+      probability: 0.2
+      body: '{"error": "chaos-failure"}'
+    - status: 200
+      body: '{"status": "success"}'
+
+- path: /api/resiliency/sequential
+  method: GET
+  responses:
+    - status: 200
+      body: '{"step": 1}'
+    - status: 503
+      body: '{"step": 2, "error": "temp-fail"}'
+    - status: 200
+      body: '{"step": 3, "status": "recovered"}'
+
+- path: /api/resiliency/circuit-breaker
+  method: GET
+  circuitBreaker:
+    failureThreshold: 5
+    successThreshold: 2
+    timeout: 2s
+  responses:
+    - status: 500
+      body: '{"error": "failure"}'

@@ -5,9 +5,8 @@
 <h1 align="center">Go Resilience Mock Server</h1>
 
 <p align="center">
-  A lightweight, high-performance <strong>Fault Injection Server</strong> for Go.
-  Test client-side resilience by simulating real-world service failures like
-  <strong>delays, errors, resource stress, and sequential failures</strong> (Chaos Engineering).
+  <strong>Stop debugging production failures in production.</strong><br>
+  Simulate network flakes, timeouts, and errors <em>locally</em> before your users see them.
 </p>
 
 <div align="center">
@@ -20,16 +19,50 @@
 
 ---
 
-## Overview
+## Quick Start (30 Seconds)
 
-**Go Resilience Mock** is the perfect tool for validating your application's **retry logic**, **circuit breakers**, and **timeout settings** in CI/CD pipelines or local development. It provides a robust suite of features to simulate network instability and server failures without the need for complex infrastructure.
+**1. Run the server** (No config needed)
+```bash
+docker run -p 8080:8080 arun0009/go-resilience-mock:latest
+```
+
+**2. Make it useful (Normal behavior)**
+```bash
+curl -i "http://localhost:8080/echo?status=200"
+# HTTP/1.1 200 OK
+```
+
+**3. Make it break (Simulate a failure)**
+Inject a 500ms delay and a 503 error using just headers. No yaml required.
+```bash
+curl -i "http://localhost:8080/echo" \
+  -H "X-Echo-Delay: 500ms" \
+  -H "X-Echo-Status: 503"
+# ... waits 500ms ...
+# HTTP/1.1 503 Service Unavailable
+```
+
+---
+
+## Why Use This?
+
+Most developers test the "Happy Path". **Go Resilience Mock** lets you test the "Sad Path" effortlessly.
+
+| The Old Way | The Resilience Mock Way |
+| :--- | :--- |
+| Writing 50 lines of mock code to return an error. | **Header-driven faults**: `X-Echo-Status: 500`. |
+| Waiting for a real environment to go down. | **Deterministic Chaos**: Trigger failures on demand. |
+| Hardcoding timeouts in your app logic. | **Randomized Jitter**: Simulates real-world network latency. |
+
+---
+
 
 ## Key Features
 
-*   **Circuit Breaker Simulation**: **[NEW]** Simulate stateful circuit breakers (Closed -> Open -> Half-Open) with configurable failure thresholds and timeouts.
-*   **Advanced Matching Rules**: **[NEW]** Trigger scenarios based on specific Headers, Query Parameters, or Body patterns (Regex).
-*   **Health Check Endpoint**: **[NEW]** Standard `/health` endpoint with uptime tracking, system info, and extensible health checks.
-*   **CI/CD Ready**: **[NEW]** Includes a GitHub Action (`uses: arun0009/go-resilience-mock@main`) for easy integration into your pipelines.
+*   **Circuit Breaker Simulation**: Simulate stateful circuit breakers (Closed -> Open -> Half-Open) with configurable failure thresholds and timeouts.
+*   **Advanced Matching Rules**: Trigger scenarios based on specific Headers, Query Parameters, or Body patterns (Regex).
+*   **Health Check Endpoint**: Standard `/health` endpoint with uptime tracking, system info, and extensible health checks.
+*   **CI/CD Ready**: Includes a GitHub Action (`uses: arun0009/go-resilience-mock@main`) for easy integration into your pipelines.
 *   **Scenario-Based Fault Injection**: Define custom sequences of HTTP responses (e.g., `200 -> 500 -> 200`) using a simple `scenarios.yaml` file.
 *   **Interactive Web UI**: Built-in **WebSocket** and **SSE** tester pages served directly from the binary. No external tools needed.
 *   **Advanced Client-Side Control**: Inject jitter (`100ms-500ms`), custom headers, or random body sizes purely via request headers (`X-Echo-*`).
@@ -66,18 +99,7 @@ docker run -p 8080:8080 arun0009/go-resilience-mock
 docker-compose up
 ```
 
-## Getting Started
 
-1.  **Start the server:**
-    ```bash
-    go run main.go
-    ```
-
-2.  **Verify it's running:**
-    Visit `http://localhost:8080/echo` in your browser or use `curl`.
-
-3.  **Explore the Documentation:**
-    Visit `http://localhost:8080/docs/` for the built-in documentation viewer.
 
 ## Core Endpoints
 
@@ -118,3 +140,24 @@ Use `scenarios.yaml` to define multi-step response sequences for specific paths 
       delay: 50ms 
       body: '{"status": "success"}'
 ```
+
+## Performance Testing with k6
+
+This project includes a comprehensive **k6** load testing script to verify performance and resilience patterns under load.
+
+### Prerequisites
+- [Install k6](https://k6.io/docs/get-started/installation/)
+
+### Running the Load Test
+The script `test/loadtest/k6.js` is self-contained and covers:
+- **Functional Tests**: Health, Echo, History, Matching Rules, Dynamic Paths.
+- **Resiliency Tests**: Jitter, Chaos, Circuit Breaker.
+- **Stress Tests**: CPU and Memory stress.
+
+```bash
+k6 run test/loadtest/k6.js
+```
+
+This will simulate a load of 20 concurrent users and verify that:
+- Failure rate is < 10% (excluding expected chaos).
+- 95th percentile latency is < 1s.

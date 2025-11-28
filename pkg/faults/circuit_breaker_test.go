@@ -8,6 +8,7 @@ import (
 
 	"github.com/arun0009/go-resilience-mock/pkg/config"
 	"github.com/gorilla/mux"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCircuitBreaker(t *testing.T) {
@@ -24,7 +25,7 @@ func TestCircuitBreaker(t *testing.T) {
 			State: "closed",
 		},
 		Responses: []config.Response{
-			{Status: 500, Body: "fail"},
+			{Status: 500, Body: config.JSONBody(`"fail"`)},
 		},
 	}
 	config.AddScenario(scenario)
@@ -38,29 +39,19 @@ func TestCircuitBreaker(t *testing.T) {
 	// 1. First Failure
 	w1 := httptest.NewRecorder()
 	r.ServeHTTP(w1, req)
-	if w1.Code != 500 {
-		t.Errorf("Expected 500, got %d", w1.Code)
-	}
-	if scenario.CBState.Failures != 1 {
-		t.Errorf("Expected 1 failure, got %d", scenario.CBState.Failures)
-	}
+	assert.Equal(t, 500, w1.Code, "Expected 500")
+	assert.Equal(t, 1, scenario.CBState.Failures, "Expected 1 failure")
 
 	// 2. Second Failure (Trip)
 	w2 := httptest.NewRecorder()
 	r.ServeHTTP(w2, req)
-	if w2.Code != 500 {
-		t.Errorf("Expected 500, got %d", w2.Code)
-	}
-	if scenario.CBState.State != "open" {
-		t.Errorf("Expected state 'open', got '%s'", scenario.CBState.State)
-	}
+	assert.Equal(t, 500, w2.Code, "Expected 500")
+	assert.Equal(t, "open", scenario.CBState.State, "Expected state 'open'")
 
 	// 3. Third Request (Blocked)
 	w3 := httptest.NewRecorder()
 	r.ServeHTTP(w3, req)
-	if w3.Code != 503 {
-		t.Errorf("Expected 503 (Open), got %d", w3.Code)
-	}
+	assert.Equal(t, 503, w3.Code, "Expected 503 (Open)")
 
 	// 4. Wait for Timeout (Half-Open)
 	time.Sleep(150 * time.Millisecond)
@@ -71,10 +62,6 @@ func TestCircuitBreaker(t *testing.T) {
 	// 5. Fourth Request (Half-Open -> Closed)
 	w4 := httptest.NewRecorder()
 	r.ServeHTTP(w4, req)
-	if w4.Code != 200 {
-		t.Errorf("Expected 200, got %d", w4.Code)
-	}
-	if scenario.CBState.State != "closed" {
-		t.Errorf("Expected state 'closed', got '%s'", scenario.CBState.State)
-	}
+	assert.Equal(t, 200, w4.Code, "Expected 200")
+	assert.Equal(t, "closed", scenario.CBState.State, "Expected state 'closed'")
 }

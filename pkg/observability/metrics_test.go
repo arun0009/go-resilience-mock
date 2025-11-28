@@ -2,16 +2,14 @@ package observability
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestInitMetrics(t *testing.T) {
 	// Ensure InitMetrics can be called multiple times without panicking
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("InitMetrics panicked: %v", r)
-		}
-	}()
-
-	InitMetrics()
-	InitMetrics()
+	assert.NotPanics(t, func() {
+		InitMetrics()
+		InitMetrics()
+	}, "InitMetrics should not panic")
 }

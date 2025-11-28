@@ -28,7 +28,8 @@ import (
 
 type contextKey string
 
-const requestIDKey contextKey = "requestID"
+// RequestIDKey is the context key for request IDs (exported for use in templates)
+const RequestIDKey contextKey = "requestID"
 
 // responseWriterLogger wraps the http.ResponseWriter to capture status code.
 type responseWriterLogger struct {
@@ -60,11 +61,21 @@ func (rwl *responseWriterLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 // --- Middlewares ---
 
-// requestIDMiddleware adds a simple request ID to the context.
+// requestIDMiddleware adds a request ID to the context.
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqID := atomic.AddUint64(&config.RequestCounter, 1)
-		ctx := context.WithValue(r.Context(), requestIDKey, reqID)
+		// Check for incoming Request ID
+		reqIDStr := r.Header.Get("X-Request-ID")
+		if reqIDStr == "" {
+			// Generate new ID if not present
+			id := atomic.AddUint64(&config.RequestCounter, 1)
+			reqIDStr = strconv.FormatUint(id, 10)
+		}
+
+		// Set it back in response header for tracing
+		w.Header().Set("X-Request-ID", reqIDStr)
+
+		ctx := context.WithValue(r.Context(), RequestIDKey, reqIDStr)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -113,16 +124,28 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		rwl := newResponseWriterLogger(w)
 
 		var bodyBuf bytes.Buffer
-		var bodyReader io.Reader = r.Body
 
 		if r.Body != nil {
-			// http.MaxBytesReader requires io.ReadCloser
-			bodyReader = http.MaxBytesReader(rwl, r.Body, cfg.MaxBodySize)
-			// io.TeeReader returns io.Reader, so we wrap it in NopCloser to satisfy io.ReadCloser if needed later,
-			// but here we just need to read from it.
-			// However, r.Body assignment requires io.ReadCloser.
-			tee := io.TeeReader(bodyReader, &bodyBuf)
-			r.Body = io.NopCloser(tee)
+			// Limit body size to prevent DoS
+			maxReader := http.MaxBytesReader(rwl, r.Body, cfg.MaxBodySize)
+
+			// Read the body fully
+			bodyBytes, err := io.ReadAll(maxReader)
+			if err != nil {
+				// If the body is too large, MaxBytesReader returns an error.
+				// We log it and proceed with what we have (or empty).
+				// In a real server we might want to return 413 here, but this is middleware.
+				// For now, we just log the error if it's not EOF
+				if err != io.EOF {
+					log.Printf("Error reading request body: %v", err)
+				}
+			}
+
+			// Restore r.Body so the handler can read it
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+			// Write to bodyBuf for logging
+			bodyBuf.Write(bodyBytes)
 		}
 
 		next.ServeHTTP(rwl, r)
@@ -133,22 +156,31 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			r.URL.Path, r.Method, strconv.Itoa(rwl.statusCode),
 		).Observe(duration.Seconds())
 
-		history, historyMutex := config.GetRequestHistory()
+		historyMutex := config.GetHistoryMutex()
 		historyMutex.Lock()
-		if len(history) >= cfg.HistorySize {
-			history = history[1:]
+		if len(config.RequestHistory) >= cfg.HistorySize {
+			config.RequestHistory = config.RequestHistory[1:]
 		}
 
-		bodySnippet := bodyBuf.String()
-		if len(bodySnippet) > 256 {
-			bodySnippet = bodySnippet[:256] + "..."
+		bodySnippet := ""
+		if cfg.LogBody {
+			// Store the raw JSON body as-is when LogBody is true
+			bodySnippet = bodyBuf.String()
+		} else {
+			// Otherwise, store a truncated version
+			bodySnippet = bodyBuf.String()
+			if len(bodySnippet) > 256 {
+				bodySnippet = bodySnippet[:256] + "..."
+			}
 		}
 
 		// Retrieve Request ID from context
-		reqID := r.Context().Value(requestIDKey)
+		reqID := r.Context().Value(RequestIDKey)
 		reqIDStr := "unknown"
-		if reqID != nil {
-			reqIDStr = strconv.FormatUint(reqID.(uint64), 10)
+		if val, ok := reqID.(string); ok {
+			reqIDStr = val
+		} else if val, ok := reqID.(uint64); ok {
+			reqIDStr = strconv.FormatUint(val, 10)
 		}
 
 		record := config.RequestRecord{
@@ -160,8 +192,9 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			RemoteAddr:  r.RemoteAddr,
 			Headers:     r.Header,
 			BodySnippet: bodySnippet,
+			StatusCode:  rwl.statusCode, // Capture the status code
 		}
-		config.RequestHistory = append(history, record)
+		config.RequestHistory = append(config.RequestHistory, record)
 		historyMutex.Unlock()
 
 		if cfg.LogRequests {
@@ -174,9 +207,9 @@ func loggingMiddleware(next http.Handler) http.Handler {
 func NewRouter(cfg config.Config) *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
 
-	router.Use(loggingMiddleware)
+	router.Use(requestIDMiddleware) // Must be first to set request ID
+	router.Use(loggingMiddleware)   // Reads request ID from context
 	router.Use(corsMiddleware)
-	router.Use(requestIDMiddleware)
 	if config.GetRateLimiter() != nil {
 		router.Use(rateLimitMiddleware)
 	}
@@ -199,7 +232,6 @@ func NewRouter(cfg config.Config) *mux.Router {
 	// Core
 	router.HandleFunc("/echo", faults.HandleEcho).Methods("GET", "POST", "PUT", "DELETE", "PATCH")
 	router.HandleFunc("/history", handleHistory).Methods("GET")
-	router.HandleFunc("/dump", handleDump).Methods("GET")
 	router.HandleFunc("/replay", handleReplay).Methods("POST")
 	router.HandleFunc("/scenario", handleAddScenario).Methods("POST")
 
@@ -234,18 +266,94 @@ func NewRouter(cfg config.Config) *mux.Router {
 
 	router.PathPrefix("/docs/").Handler(http.StripPrefix("/docs/", http.FileServer(http.Dir("docs"))))
 
-	// Catch-all: Check if it matches a dynamic scenario, otherwise Echo
+	// Catch-all: Check if it matches a dynamic scenario, otherwise 404
 	router.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if a scenario exists for this path/method
+		// 1. Try exact match first (fast path)
 		key := r.URL.Path + "_" + r.Method
 		if _, ok := config.GetScenarios().Load(key); ok {
 			faults.HandleScenario(w, r)
 			return
 		}
-		faults.HandleEcho(w, r)
+
+		// 2. Try matching path templates (slow path)
+		// We iterate through all scenarios to see if any path template matches the current request
+		var matched bool
+		config.GetScenarios().Range(func(k, v interface{}) bool {
+			scenarioKey := k.(string)
+			parts := strings.Split(scenarioKey, "_")
+			if len(parts) != 2 {
+				return true
+			}
+			tmplPath := parts[0]
+			method := parts[1]
+
+			if method != r.Method {
+				return true
+			}
+
+			// Check if template matches
+			// We use a temporary router to check for match and extract vars
+			// This is inefficient for high throughput but functional for a mock server
+			// A better approach would be to dynamically update the main router, but gorilla/mux doesn't support that easily.
+
+			// Simple check: does it look like a template?
+			if strings.Contains(tmplPath, "{") {
+				// Manual matching logic or use a helper
+				// For simplicity, let's try to match using a throwaway route match
+				// This is tricky without access to the route infrastructure.
+
+				// Alternative: We can't easily use gorilla/mux matching here without registering a route.
+				// But we can try to register it on a temporary router? No, too slow.
+
+				// Let's implement a basic path matcher for {id} style vars
+				vars, matches := matchPath(tmplPath, r.URL.Path)
+				if matches {
+					// Inject vars into context so HandleScenario can use them
+					r = mux.SetURLVars(r, vars)
+					// We found a match, but we need to pass the *Scenario* or let HandleScenario find it.
+					// HandleScenario looks up by r.URL.Path which won't work.
+					// We need to modify HandleScenario or pass the matched template path.
+
+					// Hack: We can temporarily set the URL path to the template path?
+					// No, that breaks other things.
+					// Better: Put the template path in context.
+					ctx := context.WithValue(r.Context(), faults.MatchedTemplateKey, tmplPath)
+					faults.HandleScenario(w, r.WithContext(ctx))
+					matched = true
+					return false // Stop iteration
+				}
+			}
+			return true
+		})
+
+		if !matched {
+			http.NotFound(w, r)
+		}
 	})
 
 	return router
+}
+
+// matchPath checks if a request path matches a template path (e.g. /users/{id})
+// and returns the extracted variables.
+func matchPath(template, path string) (map[string]string, bool) {
+	tmplParts := strings.Split(strings.Trim(template, "/"), "/")
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+
+	if len(tmplParts) != len(pathParts) {
+		return nil, false
+	}
+
+	vars := make(map[string]string)
+	for i, part := range tmplParts {
+		if strings.HasPrefix(part, "{") && strings.HasSuffix(part, "}") {
+			key := part[1 : len(part)-1]
+			vars[key] = pathParts[i]
+		} else if part != pathParts[i] {
+			return nil, false
+		}
+	}
+	return vars, true
 }
 
 // Run starts the HTTP server.
@@ -294,15 +402,49 @@ func printBanner(cfg config.Config) {
 // --- Helper Handlers (Removed front-end HTML, kept API endpoints) ---
 
 func handleHistory(w http.ResponseWriter, r *http.Request) {
-	history, historyMutex := config.GetRequestHistory()
+	historyMutex := config.GetHistoryMutex()
 	historyMutex.Lock()
 	defer historyMutex.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(history)
-}
 
-func handleDump(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
+	history := config.RequestHistory
+
+	cfg := config.GetConfig()
+
+	// Transform to simplified format
+	simplified := make([]map[string]interface{}, 0, len(history))
+	for _, record := range history {
+		userAgent := ""
+		if ua, ok := record.Headers["User-Agent"]; ok && len(ua) > 0 {
+			userAgent = ua[0]
+		}
+
+		entry := map[string]interface{}{
+			"id":        record.ID,
+			"time":      record.Timestamp.Format("15:04:05"),
+			"method":    record.Method,
+			"path":      record.Path,
+			"query":     record.Query,
+			"status":    record.StatusCode,
+			"userAgent": userAgent,
+		}
+
+		// If LogBody is enabled, include the raw body in the response
+		if cfg.LogBody && record.BodySnippet != "" {
+			var bodyData interface{}
+			if err := json.Unmarshal([]byte(record.BodySnippet), &bodyData); err == nil {
+				// If it's valid JSON, include it as parsed JSON
+				entry["body"] = bodyData
+			} else {
+				// If it's not valid JSON, include it as a string
+				entry["body"] = record.BodySnippet
+			}
+		}
+
+		simplified = append(simplified, entry)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(simplified)
 }
 
 // handleResetHistory clears the recorded request history.
@@ -311,10 +453,10 @@ func handleResetHistory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	history, historyMutex := config.GetRequestHistory()
+	historyMutex := config.GetHistoryMutex()
 	historyMutex.Lock()
 	defer historyMutex.Unlock()
-	config.RequestHistory = history[:0]
+	config.RequestHistory = config.RequestHistory[:0]
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Request history cleared."))
 }
@@ -341,11 +483,11 @@ func handleReplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	history, historyMutex := config.GetRequestHistory()
+	historyMutex := config.GetHistoryMutex()
 	historyMutex.Lock()
 	var record config.RequestRecord
 	found := false
-	for _, rec := range history {
+	for _, rec := range config.RequestHistory {
 		if rec.ID == req.ID {
 			record = rec
 			found = true
@@ -400,15 +542,15 @@ func handleReplay(w http.ResponseWriter, r *http.Request) {
 // handleAddScenario adds a new scenario dynamically.
 func handleAddScenario(w http.ResponseWriter, r *http.Request) {
 	var scenarios []config.Scenario
-	// Try parsing as list first
 	bodyBytes, _ := io.ReadAll(r.Body)
 	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
+	// Try parsing as a list of scenarios first
 	if err := json.Unmarshal(bodyBytes, &scenarios); err != nil {
-		// Try single object
+		// Try parsing as a single scenario
 		var s config.Scenario
 		if err2 := json.Unmarshal(bodyBytes, &s); err2 != nil {
-			http.Error(w, "Invalid scenario JSON", http.StatusBadRequest)
+			http.Error(w, "Invalid scenario JSON: "+err2.Error(), http.StatusBadRequest)
 			return
 		}
 		scenarios = []config.Scenario{s}
