@@ -73,3 +73,49 @@ Use Go templates in the response body to inject request data or server state.
 - `.Request.Headers`
 - `.Server.Hostname`
 - `.Server.Timestamp`
+
+### Circuit Breaker
+Simulate a stateful Circuit Breaker pattern. The server tracks failures and "trips" the breaker, rejecting requests with 503 until the timeout expires.
+
+```yaml
+- path: /api/unstable
+  method: GET
+  circuitBreaker:
+    failureThreshold: 3      # Trip after 3 consecutive failures
+    successThreshold: 2      # Reset after 2 successes in Half-Open state
+    timeout: 10s             # Remain Open for 10 seconds
+  responses:
+    - status: 500            # These failures count towards the threshold
+      body: "Internal Error"
+```
+
+### Advanced Matching Rules
+Trigger scenarios only when specific conditions are met. If multiple scenarios match the same path, the first one with matching rules is used.
+
+```yaml
+- path: /api/search
+  method: GET
+  matches:
+    query:
+      q: "golang"            # Only match if ?q=golang
+  responses:
+    - status: 200
+      body: "Search results for Golang"
+
+- path: /api/search
+  method: GET
+  matches:
+    headers:
+      X-User-Type: "admin"   # Only match for admins
+  responses:
+    - status: 200
+      body: "Admin Search Results"
+
+- path: /api/data
+  method: POST
+  matches:
+    body: "regex:^START.*"   # Match body starting with START
+  responses:
+    - status: 201
+      body: "Created"
+```

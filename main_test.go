@@ -96,7 +96,7 @@ func injectScenario(path, method string, resp config.Response) {
 		Responses: []config.Response{resp},
 	}
 	// Note: In real app, LoadConfig handles this map. We insert manually for test.
-	config.GetScenarios().Store(path+"_"+method, s)
+	config.AddScenario(&s)
 }
 
 func TestPathVariables(t *testing.T) {

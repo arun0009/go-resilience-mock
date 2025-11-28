@@ -31,12 +31,39 @@ type Config struct {
 	Scenarios              []Scenario    `yaml:"-"` // Handled separately
 }
 
+// CircuitBreakerConfig defines the configuration for the circuit breaker
+type CircuitBreakerConfig struct {
+	FailureThreshold int           `yaml:"failureThreshold"`
+	SuccessThreshold int           `yaml:"successThreshold"`
+	Timeout          time.Duration `yaml:"timeout"`
+}
+
+// CircuitBreakerState tracks the runtime state of the circuit breaker
+type CircuitBreakerState struct {
+	State          string    // "closed", "open", "half-open"
+	Failures       int       // Consecutive failures
+	Successes      int       // Consecutive successes
+	LastFailure    time.Time // Time of last failure
+	LastTransition time.Time // Time of last state change
+	Mutex          sync.Mutex
+}
+
+// MatchConfig defines rules for matching a request to a scenario
+type MatchConfig struct {
+	Headers map[string]string `yaml:"headers"`
+	Query   map[string]string `yaml:"query"`
+	Body    string            `yaml:"body"` // Regex pattern
+}
+
 // Scenario defines a sequence of custom responses for a specific path
 type Scenario struct {
-	Path      string     `yaml:"path"`
-	Method    string     `yaml:"method"`
-	Responses []Response `yaml:"responses"`
-	Index     int32      // Current response index (atomic operations)
+	Path           string               `yaml:"path"`
+	Method         string               `yaml:"method"`
+	Matches        MatchConfig          `yaml:"matches"`
+	Responses      []Response           `yaml:"responses"`
+	CircuitBreaker CircuitBreakerConfig `yaml:"circuitBreaker"`
+	CBState        *CircuitBreakerState `yaml:"-"` // Runtime state
+	Index          int32                // Current response index (atomic operations)
 }
 
 // Response defines a custom response
@@ -81,7 +108,7 @@ var (
 
 	configLock     sync.Mutex
 	currentConfig  Config
-	scenarios      sync.Map // map[string]*Scenario (key: path_method)
+	scenarios      sync.Map // map[string][]*Scenario (key: path_method)
 	RequestHistory []RequestRecord
 	HistoryMutex   sync.Mutex
 	RequestCounter uint64
@@ -111,8 +138,12 @@ func LoadConfig(scenarioFile string) (Config, error) {
 			return Config{}, err
 		}
 
-		for _, s := range loadedScenarios {
-			AddScenario(s)
+		for i := range loadedScenarios {
+			// Initialize runtime state
+			loadedScenarios[i].CBState = &CircuitBreakerState{
+				State: "closed",
+			}
+			AddScenario(&loadedScenarios[i])
 		}
 		currentConfig.Scenarios = loadedScenarios
 	}
@@ -188,8 +219,20 @@ func LoadConfig(scenarioFile string) (Config, error) {
 }
 
 // AddScenario adds or updates a scenario in the thread-safe map
-func AddScenario(s Scenario) {
-	scenarios.Store(s.Path+"_"+s.Method, s)
+func AddScenario(s *Scenario) {
+	if s.CBState == nil {
+		s.CBState = &CircuitBreakerState{State: "closed"}
+	}
+	key := s.Path + "_" + s.Method
+
+	// Load existing list or create new
+	if v, ok := scenarios.Load(key); ok {
+		list := v.([]*Scenario)
+		list = append(list, s)
+		scenarios.Store(key, list)
+	} else {
+		scenarios.Store(key, []*Scenario{s})
+	}
 }
 
 // GetScenarios returns a copy of the loaded scenarios map

@@ -26,6 +26,9 @@
 
 ## Key Features
 
+*   **Circuit Breaker Simulation**: **[NEW]** Simulate stateful circuit breakers (Closed -> Open -> Half-Open) with configurable failure thresholds and timeouts.
+*   **Advanced Matching Rules**: **[NEW]** Trigger scenarios based on specific Headers, Query Parameters, or Body patterns (Regex).
+*   **CI/CD Ready**: **[NEW]** Includes a GitHub Action (`uses: arun0009/go-resilience-mock@main`) for easy integration into your pipelines.
 *   **Scenario-Based Fault Injection**: Define custom sequences of HTTP responses (e.g., `200 -> 500 -> 200`) using a simple `scenarios.yaml` file.
 *   **Interactive Web UI**: Built-in **WebSocket** and **SSE** tester pages served directly from the binary. No external tools needed.
 *   **Advanced Client-Side Control**: Inject jitter (`100ms-500ms`), custom headers, or random body sizes purely via request headers (`X-Echo-*`).
