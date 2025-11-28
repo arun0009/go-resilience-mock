@@ -58,6 +58,7 @@ Inject faults randomly. If the probability check fails, the server falls back to
 ### Dynamic Templates
 Use Go templates in the response body to inject request data or server state.
 
+**Example: Simple Query Parameter**
 ```yaml
 - path: /api/echo-id
   method: GET
@@ -66,11 +67,21 @@ Use Go templates in the response body to inject request data or server state.
       body: '{"id": "{{.Request.Query.id}}", "timestamp": "{{.Server.Timestamp}}"}'
 ```
 
+**Example: Nested JSON Body (requires `Content-Type: application/json`)**
+```yaml
+- path: /api/greet
+  method: POST
+  responses:
+    - status: 200
+      body: 'Hello {{.Request.Body.name.firstName}} {{.Request.Body.name.lastName}}!'
+```
+
 **Available Data:**
 - `.Request.Method`
 - `.Request.Path`
-- `.Request.Query` (e.g., `.Request.Query.Get "param"`)
-- `.Request.Headers`
+- `.Request.Query.paramName` (e.g., `{{.Request.Query.id}}`)
+- `.Request.Headers` (use `{{index .Request.Headers "Header-Name"}}` for headers with special characters)
+- `.Request.Body` (JSON parsed as nested objects/arrays if `Content-Type: application/json`, otherwise raw string)
 - `.Server.Hostname`
 - `.Server.Timestamp`
 

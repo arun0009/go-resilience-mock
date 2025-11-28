@@ -1,8 +1,10 @@
 package faults
 
 import (
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -14,6 +16,7 @@ func TestExecuteTemplate(t *testing.T) {
 		path     string
 		query    url.Values
 		headers  http.Header
+		reqBody  string
 		expected string
 		wantErr  bool
 	}{
@@ -67,16 +70,54 @@ func TestExecuteTemplate(t *testing.T) {
 			expected: "",
 			wantErr:  true,
 		},
+		{
+			name:     "JSON Body - Nested Field",
+			body:     "Hello {{.Request.Body.name.firstName}} {{.Request.Body.name.lastName}}",
+			method:   "POST",
+			path:     "/api/greet",
+			query:    nil,
+			headers:  http.Header{"Content-Type": []string{"application/json"}},
+			reqBody:  `{"name":{"firstName":"Arun","lastName":"Gopalpuri"}}`,
+			expected: "Hello Arun Gopalpuri",
+			wantErr:  false,
+		},
+		{
+			name:     "JSON Body - Array Access",
+			body:     "First item: {{index .Request.Body.items 0}}",
+			method:   "POST",
+			path:     "/api/array",
+			query:    nil,
+			headers:  http.Header{"Content-Type": []string{"application/json"}},
+			reqBody:  `{"items":["apple","banana","orange"]}`,
+			expected: "First item: apple",
+			wantErr:  false,
+		},
+		{
+			name:     "Non-JSON Body - Raw String",
+			body:     "Received: {{.Request.Body}}",
+			method:   "POST",
+			path:     "/api/text",
+			query:    nil,
+			headers:  http.Header{"Content-Type": []string{"text/plain"}},
+			reqBody:  "Hello World",
+			expected: "Received: Hello World",
+			wantErr:  false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			u, _ := url.Parse("http://localhost" + tt.path)
 			u.RawQuery = tt.query.Encode()
-			req := &http.Request{
-				Method: tt.method,
-				URL:    u,
-				Header: tt.headers,
+
+			var body io.Reader
+			if tt.reqBody != "" {
+				body = strings.NewReader(tt.reqBody)
+			}
+
+			req, _ := http.NewRequest(tt.method, u.String(), body)
+			if tt.headers != nil {
+				req.Header = tt.headers
 			}
 
 			got, err := executeTemplate(tt.body, req)
