@@ -64,7 +64,30 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scenario := v.(config.Scenario)
+	scenariosList := v.([]*config.Scenario)
+	var scenario *config.Scenario
+
+	// Find the first matching scenario
+	for _, s := range scenariosList {
+		if matchesRequest(s, r) {
+			scenario = s
+			break
+		}
+	}
+
+	if scenario == nil {
+		// No matching scenario found, fallback to Echo
+		HandleEcho(w, r)
+		return
+	}
+
+	// --- Circuit Breaker Check ---
+	if scenario.CircuitBreaker.FailureThreshold > 0 {
+		if !checkCircuitBreaker(scenario) {
+			http.Error(w, "Service Unavailable (Circuit Breaker Open)", http.StatusServiceUnavailable)
+			return
+		}
+	}
 
 	// Atomically increment and wrap the index
 	idx := int(atomic.LoadInt32(&scenario.Index))
@@ -81,6 +104,8 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 			// Probability check failed; DO NOT inject fault.
 			// Fallback to Echo to simulate a "success" pass-through.
 			HandleEcho(w, r)
+			// Treat as success for CB
+			updateCircuitBreaker(scenario, true)
 			return
 		}
 	}
@@ -92,8 +117,17 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Track HTTP error faults
-	if response.Status >= 400 {
+	isFailure := false
+	if response.Status >= 500 {
+		isFailure = true
 		observability.FaultsInjected.WithLabelValues("http_error", pathTemplate).Inc()
+	} else if response.Status >= 400 {
+		observability.FaultsInjected.WithLabelValues("http_error", pathTemplate).Inc()
+	}
+
+	// Update Circuit Breaker State
+	if scenario.CircuitBreaker.FailureThreshold > 0 {
+		updateCircuitBreaker(scenario, !isFailure)
 	}
 
 	// --- 2. Headers and Status ---

@@ -319,6 +319,18 @@
                     }
                 });
 
+                // Intercept Markdown links to stay in SPA
+                document.querySelectorAll('#content a').forEach(a => {
+                    const href = a.getAttribute('href');
+                    if (href && href.endsWith('.md') && !href.startsWith('http')) {
+                        a.onclick = (e) => {
+                            e.preventDefault();
+                            loadDoc(href, null); // Pass null as we don't update sidebar active state for internal links
+                            // Optionally update URL hash or history here
+                        };
+                    }
+                });
+
             } catch (error) {
                 document.getElementById('content').innerHTML = `<h1>Error</h1><p>${error.message}</p>`;
             }

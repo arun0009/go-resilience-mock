@@ -223,11 +223,8 @@ func NewRouter(cfg config.Config) *mux.Router {
 	router.HandleFunc("/info", handleInfo).Methods("GET")
 
 	// Documentation
-	// Redirect /docs to /docs/
-	router.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/docs/", http.StatusMovedPermanently)
-	})
 	// Serve the docs directory at /docs/
+
 	router.PathPrefix("/docs/").Handler(http.StripPrefix("/docs/", http.FileServer(http.Dir("docs"))))
 
 	// Catch-all: Check if it matches a dynamic scenario, otherwise Echo
@@ -431,8 +428,8 @@ func handleAddScenario(w http.ResponseWriter, r *http.Request) {
 		scenarios = []config.Scenario{s}
 	}
 
-	for _, s := range scenarios {
-		config.AddScenario(s)
+	for i := range scenarios {
+		config.AddScenario(&scenarios[i])
 	}
 
 	w.WriteHeader(http.StatusOK)

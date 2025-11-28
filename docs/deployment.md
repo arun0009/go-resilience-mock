@@ -66,24 +66,21 @@ export KEY_FILE=./key.pem
 
 The server will listen on the configured `PORT` (default 8080) using HTTPS.
 
-## TLS (HTTPS) Support
+## CI/CD Integration
+This project includes a GitHub Action that allows you to easily spin up the mock server in your CI pipelines.
 
-To enable HTTPS, set `ENABLE_TLS=true` and provide the path to your certificate and key files.
+### GitHub Actions
+Add the following step to your workflow:
 
-```bash
-# Generate self-signed certs
-openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj '/CN=localhost'
-
-# Run with TLS
-export ENABLE_TLS=true
-export CERT_FILE=./cert.pem
-export KEY_FILE=./key.pem
-./go-resilience-mock
+```yaml
+- name: Start Resilience Mock
+  uses: arun0009/go-resilience-mock@main
+  with:
+    port: 8080
+    scenarios: ./tests/scenarios.yaml
 ```
 
-The server will listen on the configured `PORT` (default 8080) using HTTPS.
-
-(Coming Soon)
+The server will start in the background, allowing you to run your integration tests against it.
 
 ## Kubernetes
 

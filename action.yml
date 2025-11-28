@@ -1,0 +1,28 @@
+name: 'Go Resilience Mock'
+description: 'Run the Go Resilience Mock server in your workflow'
+inputs:
+  port:
+    description: 'Port to run the server on'
+    required: false
+    default: '8080'
+  scenarios:
+    description: 'Path to scenarios.yaml file'
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install Resilience Mock
+      shell: bash
+      run: go install github.com/arun0009/go-resilience-mock@latest
+
+    - name: Start Server
+      shell: bash
+      run: |
+        nohup go-resilience-mock > resilience-mock.log 2>&1 &
+        echo "Resilience Mock started on port ${{ inputs.port }}"
+        sleep 2
