@@ -77,6 +77,7 @@ Use Go templates in the response body to inject request data or server state.
 ```
 
 **Available Data:**
+- `.Request.ID` - Unique request ID
 - `.Request.Method`
 - `.Request.Path`
 - `.Request.Query.paramName` (e.g., `{{.Request.Query.id}}`)
@@ -84,6 +85,35 @@ Use Go templates in the response body to inject request data or server state.
 - `.Request.Body` (JSON parsed as nested objects/arrays if `Content-Type: application/json`, otherwise raw string)
 - `.Server.Hostname`
 - `.Server.Timestamp`
+
+**Template Helper Functions:**
+- `{{uuid}}` - Generate pseudo-random UUID
+- `{{randomInt 1 100}}` - Random integer between min and max
+- `{{add 5 3}}` - Add two integers (returns 8)
+- `{{subtract 10 3}}` - Subtract two integers (returns 7)
+
+**Example: Using Helpers**
+```yaml
+- path: /api/order
+  method: POST
+  responses:
+    - status: 201
+      body: '{"orderId": "{{uuid}}", "total": {{add 100 50}}, "requestId": "{{.Request.ID}}"}'
+```
+
+### Delay Jitter
+Add realistic latency variation with delay ranges instead of fixed delays:
+
+```yaml
+- path: /api/slow
+  method: GET
+  responses:
+    - status: 200
+      delayRange: "100ms-500ms"  # Random delay between 100ms and 500ms
+      body: "Response with variable latency"
+```
+
+Use `delay` for fixed latency or `delayRange` for jitter. If both are specified, `delayRange` takes precedence.
 
 ### Circuit Breaker
 Simulate a stateful Circuit Breaker pattern. The server tracks failures and "trips" the breaker, rejecting requests with 503 until the timeout expires.

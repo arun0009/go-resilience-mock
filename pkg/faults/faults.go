@@ -94,9 +94,25 @@ func HandleScenario(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- 1. Fault Injection: Delay ---
-	if response.Delay > 0 {
+	var actualDelay time.Duration
+	if response.DelayRange != "" {
+		// Parse delay range (e.g., "100ms-500ms")
+		parts := strings.Split(response.DelayRange, "-")
+		if len(parts) == 2 {
+			minDelay, err1 := time.ParseDuration(strings.TrimSpace(parts[0]))
+			maxDelay, err2 := time.ParseDuration(strings.TrimSpace(parts[1]))
+			if err1 == nil && err2 == nil && maxDelay > minDelay {
+				delta := maxDelay - minDelay
+				actualDelay = minDelay + time.Duration(mrand.Int63n(int64(delta)))
+			}
+		}
+	} else if response.Delay > 0 {
+		actualDelay = response.Delay
+	}
+
+	if actualDelay > 0 {
 		observability.FaultsInjected.WithLabelValues("delay", pathTemplate).Inc()
-		time.Sleep(response.Delay)
+		time.Sleep(actualDelay)
 	}
 
 	// Track HTTP error faults

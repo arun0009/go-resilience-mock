@@ -70,6 +70,7 @@ type Scenario struct {
 type Response struct {
 	Status      int               `yaml:"status"`
 	Delay       time.Duration     `yaml:"delay"`
+	DelayRange  string            `yaml:"delayRange"` // e.g., "100ms-500ms"
 	Body        string            `yaml:"body"`
 	Headers     map[string]string `yaml:"headers"`
 	Gzip        bool              `yaml:"gzip"`
